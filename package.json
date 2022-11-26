@@ -35,7 +35,7 @@
   "author": "Daniel Eugene Botha (HashLips)",
   "license": "MIT",
   "scripts": {
-    "start": "react-app-rewired start",
+    "start": "react-app-rewired start --openssl-legacy-provider",
     "build": "react-app-rewired build",
     "test": "react-app-rewired test",
     "eject": "react-scripts eject"

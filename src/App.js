@@ -1,0 +1,535 @@
+import React, { useEffect, useState, useRef } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import { connect } from "./redux/blockchain/blockchainActions";
+import { fetchData } from "./redux/data/dataActions";
+import * as s from "./styles/globalStyles";
+import styled from "styled-components";
+import store from "./redux/store";
+import Header from "./Header";
+import Footer from "./Footer";
+import {
+  useAccount,
+  useConnect,
+  useSigner,
+  useProvider,
+  configureChains,
+} from "wagmi";
+import Web3 from "web3";
+import { ethers } from "ethers";
+import ConnectButton from "./ConnectButton";
+
+const truncate = (input, len) =>
+  input.length > len ? `${input.substring(0, len)}...` : input;
+
+const whitelistedAddresses = [];
+
+const lowerCaseWhitelist = whitelistedAddresses.map((el) => el.toLowerCase());
+const whitelistedFull = [...whitelistedAddresses, ...lowerCaseWhitelist];
+
+export const StyledButton = styled.button`
+  align-self: center;
+  font-family: "Patrick Hand SC", cursive;
+  background-color: #f7f8fa;
+  background-image: none;
+  background-position: 0 90%;
+  background-repeat: repeat no-repeat;
+  background-size: 4px 3px;
+  border-radius: 15px 225px 255px 15px 15px 255px 225px 15px;
+  border-style: solid;
+  border-width: 2px;
+  box-shadow: rgba(245, 220, 255, 1) 4px 4px 1px 1px;
+  box-sizing: border-box;
+  color: #010606;
+  border-color: #010606;
+  cursor: pointer;
+  display: inline-block;
+  font-size: 2rem;
+  line-height: 23px;
+  outline: none;
+  padding: 0.75rem;
+  text-decoration: none;
+  transition: all 235ms ease-in-out;
+  border-bottom-left-radius: 15px 255px;
+  border-bottom-right-radius: 225px 15px;
+  border-top-left-radius: 255px 15px;
+  border-top-right-radius: 15px 225px;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  :hover {
+    transform: translate3d(0, -2px, 0);
+  }
+`;
+
+export const StyledRoundButton = styled.button`
+  padding: 10px;
+  border-radius: 100%;
+  border: none;
+  background-color: #f7f8fa;
+  padding: 10px;
+  font-weight: bold;
+  font-size: 15px;
+  color: black;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 15px 225px 255px 15px 15px 255px 225px 15px;
+  border-style: solid;
+  border-width: 2px;
+  color: #010606;
+  border-color: #010606;
+  border-bottom-left-radius: 15px 255px;
+  border-bottom-right-radius: 225px 15px;
+  border-top-left-radius: 255px 15px;
+  border-top-right-radius: 15px 225px;
+  box-shadow: rgba(245, 220, 255, 1) 4px 4px 1px 1px;
+  -webkit-box-shadow: rgba(245, 220, 255, 1) 4px 4px 1px 1px;
+  -moz-box-shadow: rgba(245, 220, 255, 1) 4px 4px 1px 1px;
+  :active {
+    box-shadow: none;
+    -webkit-box-shadow: none;
+    -moz-box-shadow: none;
+  }
+`;
+
+export const ResponsiveWrapper = styled.div`
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: stretched;
+  align-items: stretched;
+  width: 100%;
+  /* @media (max-width: 766px) {
+    flex-direction: column; */
+    /* flex-direction: column-reverse; */
+  }
+`;
+
+export const StyledLogo = styled.img`
+  width: 195px;
+  @media (min-width: 767px) {
+    width: 195px;
+  }
+  max-height: 100px;
+  transition: width 0.5s;
+  transition: height 0.5s;
+  cursor: pointer;
+`;
+
+export const StyledImg = styled.img`
+  box-shadow: 0px 5px 11px 2px rgba(0, 0, 0, 0.7);
+  background-color: #66bcd7;
+  height: auto;
+  margin: 0 auto;
+  max-width: 30rem;
+  @media (max-width: 767px) {
+    max-width: 16rem;
+  }
+  border-radius: 50%;
+  box-shadow: 0 0 1rem 0.2rem black;
+  /* transition: width 0.5s; */
+`;
+
+export const StyledCont = styled.div`
+  /* width: 60%; */
+  /* border: 2px solid black; */
+  padding: 0 10rem 28rem 10rem;
+  display: flex;
+  justify-content: center;
+  grid-gap: 2rem;
+  flex-direction: row;
+  align-items: center;
+`;
+
+export const StyledLink = styled.a`
+  color: black;
+  text-decoration: none;
+`;
+
+var web3;
+web3 = new Web3("https://goerli.infura.io/v3/559d31bdb5da49af9f0dbf68ec687285");
+const FetchEtherProvider = async (contractAddress, contractAbi, provider) => {
+  if (Web3.utils.isAddress(contractAddress)) {
+    return new ethers.Contract(contractAddress, contractAbi, provider);
+  }
+};
+
+function App() {
+  const dispatch = useDispatch();
+  const blockchain = useSelector((state) => state.blockchain);
+  const data = useSelector((state) => state.data);
+  const [claimingNft, setClaimingNft] = useState(false);
+  const [feedback, setFeedback] = useState(`Click MINT to mint your NFT.`);
+  const [mintAmount, setMintAmount] = useState(1);
+  const { data: signer } = useSigner();
+  const provider = useProvider();
+  const { address } = useAccount();
+
+  const [CONFIG, SET_CONFIG] = useState({
+    CONTRACT_ADDRESS: "",
+    SCAN_LINK: "",
+    NETWORK: {
+      NAME: "",
+      SYMBOL: "",
+      ID: 0,
+    },
+    NFT_NAME: "",
+    SYMBOL: "",
+    MAX_SUPPLY: 1,
+    WEI_COST: 0,
+    DISPLAY_COST: 0,
+    GAS_LIMIT: 0,
+    MARKETPLACE: "",
+    MARKETPLACE_LINK: "",
+    SHOW_BACKGROUND: false,
+  });
+
+  const claimNFTs = async () => {
+    try {
+      const abiResponse = await fetch("/config/abi.json", {
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+      });
+      const abi = await abiResponse.json();
+      const configResponse = await fetch("/config/config.json", {
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+      });
+
+      const CONF = await configResponse.json();
+      let gasLimit = CONFIG.GAS_LIMIT;
+
+      let totalGasLimit = String(gasLimit * mintAmount);
+
+      console.log("Gas limit: ", totalGasLimit);
+      setFeedback(`Minting your ${CONFIG.NFT_NAME}...`);
+      setClaimingNft(true);
+      let block = await FetchEtherProvider(
+        "0xD7E726B879f1835e7D80C5646B19728b9A2fb90E",
+        abi,
+        signer
+      );
+      block = block.connect(signer);
+      let web3Contract = await FetchProvider(
+        "0xD7E726B879f1835e7D80C5646B19728b9A2fb90E",
+        abi,
+        signer
+      );
+      let cost = await web3Contract.methods.cost().call();
+
+      let totalCostWei = String(cost * mintAmount);
+
+      let tx = await block.mint(mintAmount);
+      tx.wait();
+      setFeedback(
+        `WOW, the ${CONF.NFT_NAME} is yours! go visit Opensea.io to view it.`
+      );
+      setClaimingNft(false);
+      dispatch(fetchData(address));
+    } catch (error) {
+      console.log(error);
+      setFeedback("Opps not whitelisted or max mint amount reached.");
+      setClaimingNft(false);
+    }
+  };
+
+  const decrementMintAmount = () => {
+    let newMintAmount = mintAmount - 1;
+    if (newMintAmount < 1) {
+      newMintAmount = 1;
+    }
+    setMintAmount(newMintAmount);
+  };
+
+  const incrementMintAmount = () => {
+    let newMintAmount = mintAmount + 1;
+    if (newMintAmount > 3) {
+      newMintAmount = 3;
+    }
+    setMintAmount(newMintAmount);
+  };
+
+  const getData = () => {
+    if (blockchain.account !== "" && blockchain.smartContract !== null) {
+      dispatch(fetchData(blockchain.account));
+    }
+  };
+
+  const getConfig = async () => {
+    const configResponse = await fetch("/config/config.json", {
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+    });
+    const config = await configResponse.json();
+    SET_CONFIG(config);
+  };
+
+  useEffect(() => {
+    getConfig();
+  }, []);
+
+  useEffect(() => {
+    getData();
+  }, [blockchain.account]);
+
+  return (
+    <div>
+      <div className="bgImg">
+        <Header />
+
+        <s.Screen class="">
+          <s.Container flex={1} ai={"center"} style={{ padding: "0 0 0 0" }}>
+            <br />
+            <br />
+            <h1
+              style={{
+                marginBottom: "40px",
+                textAlign: "center",
+                fontSize: "5rem",
+                textShadow: "0.3rem 0.3rem #f5dcff",
+                lineHeight: "5rem",
+                fontFamily: "Patrick Hand SC,cursive",
+                fontWeight: "700",
+              }}
+            >
+              WE ARE GHOSTLERS
+            </h1>
+
+            <ResponsiveWrapper flex={1} style={{ padding: "0 0" }}>
+              <s.Container flex={1} jc={"center"} ai={"center"}>
+                <StyledImg
+                  alt={"Ghostlers"}
+                  src={"/config/images/example.gif"}
+                />
+              </s.Container>
+
+              <s.Container
+                flex={2}
+                jc={"center"}
+                ai={"center"}
+                style={{
+                  padding: "1.4rem 1.4rem 0 1.4rem",
+                  borderRadius: 24,
+                }}
+              >
+                <s.TextTitle
+                  style={{
+                    textAlign: "center",
+                    fontSize: "4rem",
+                    fontWeight: "bold",
+                  }}
+                >
+                  {CONFIG.TITLE_ONE}
+                </s.TextTitle>
+                <s.TextTitle
+                  style={{
+                    textAlign: "center",
+                    fontSize: 30,
+                    fontWeight: "bold",
+                  }}
+                >
+                  {CONFIG.TITLE_TWO}
+                </s.TextTitle>
+                <s.TextTitle
+                  style={{
+                    textAlign: "center",
+                    fontSize: "25",
+                  }}
+                >
+                  {CONFIG.MAX_PER_WALLET}
+                </s.TextTitle>
+                <s.TextTitle
+                  style={{
+                    textAlign: "center",
+                    fontSize: 50,
+                    fontWeight: "bold",
+                  }}
+                >
+                  {data.totalSupply !== 0
+                    ? `${data.totalSupply} / ${CONFIG.MAX_SUPPLY}`
+                    : `? / ${CONFIG.MAX_SUPPLY}`}
+                </s.TextTitle>
+                {Number(data.totalSupply) >= CONFIG.MAX_SUPPLY ? (
+                  <>
+                    <s.TextTitle style={{ textAlign: "center" }}>
+                      The sale has ended.
+                    </s.TextTitle>
+                    <s.TextDescription style={{ textAlign: "center" }}>
+                      You can still find {CONFIG.NFT_NAME} on
+                    </s.TextDescription>
+                    <s.SpacerSmall />
+                    <StyledLink
+                      target={"_blank"}
+                      href={CONFIG.MARKETPLACE_LINK}
+                    >
+                      {CONFIG.MARKETPLACE}
+                    </StyledLink>
+                  </>
+                ) : (
+                  <>
+                    <s.TextTitle style={{ textAlign: "center" }}>
+                      1 Ghostler cost you {data.cost} ETH
+                    </s.TextTitle>
+                    <s.TextDescription style={{ textAlign: "center" }}>
+                      (Excluding gas fees)
+                    </s.TextDescription>
+                    <s.SpacerSmall />
+                    {blockchain.account === "" ||
+                    blockchain.smartContract === null ? (
+                      <s.Container ai={"center"} jc={"center"}>
+                        <s.TextDescription
+                          style={{
+                            textAlign: "center",
+                          }}
+                        >
+                          Connect your Metamask wallet
+                        </s.TextDescription>
+                        <s.SpacerSmall />
+                        <ConnectButton />/
+                        <StyledButton
+                          onClick={(e) => {
+                            e.preventDefault();
+                            dispatch(connect());
+                            getData();
+                          }}
+                        >
+                          CONNECT
+                        </StyledButton>
+                        {blockchain.errorMsg !== "" ? (
+                          <>
+                            <s.SpacerSmall />
+                            <s.TextDescription
+                              style={{
+                                textAlign: "center",
+                              }}
+                            >
+                              {blockchain.errorMsg}
+                            </s.TextDescription>
+                          </>
+                        ) : null}
+                        <s.TextTitle
+                          style={{
+                            textAlign: "center",
+                            fontSize: 20,
+                            fontWeight: "bold",
+
+                            paddingTop: 25,
+                          }}
+                        >
+                          {CONFIG.SOLD_OUT}
+                        </s.TextTitle>
+                      </s.Container>
+                    ) : (
+                      <>
+                        <s.TextDescription
+                          style={{
+                            textAlign: "center",
+                          }}
+                        >
+                          {feedback}
+                        </s.TextDescription>
+
+                        <s.Container ai={"center"} jc={"center"} fd={"row"}>
+                          <StyledRoundButton
+                            style={{ lineHeight: 0.4 }}
+                            disabled={claimingNft ? 1 : 0}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              decrementMintAmount();
+                            }}
+                          >
+                            -
+                          </StyledRoundButton>
+                          <s.SpacerMedium />
+                          <s.TextDescription
+                            style={{
+                              textAlign: "center",
+                            }}
+                          >
+                            {mintAmount}
+                          </s.TextDescription>
+                          <s.SpacerMedium />
+                          <StyledRoundButton
+                            disabled={claimingNft ? 1 : 0}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              incrementMintAmount();
+                            }}
+                          >
+                            +
+                          </StyledRoundButton>
+                        </s.Container>
+                        <s.SpacerSmall />
+                        <s.Container ai={"center"} jc={"center"} fd={"row"}>
+                          <StyledButton
+                            disabled={claimingNft ? 1 : 0}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              claimNFTs();
+                              getData();
+                            }}
+                          >
+                            {claimingNft ? "MINTING" : "MINT"}
+                          </StyledButton>
+                        </s.Container>
+                      </>
+                    )}
+                  </>
+                )}
+                <s.SpacerMedium />
+              </s.Container>
+            </ResponsiveWrapper>
+
+            <StyledCont>
+              {CONFIG.OPENSEA != "" ? (
+                <StyledButton
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.open(CONFIG.OPENSEA, "_blank");
+                  }}
+                  style={{
+                    width: 120,
+                    boxShadow: "#bcf0fb 4px 4px 1px 1px",
+                  }}
+                >
+                  OPENSEA
+                </StyledButton>
+              ) : null}
+              {CONFIG.SCAN_LINK != "" ? (
+                <StyledButton
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.open(CONFIG.SCAN_LINK, "_blank");
+                  }}
+                  style={{
+                    width: 120,
+                    boxShadow: "#bcf0fb 4px 4px 1px 1px",
+                  }}
+                >
+                  CONTRACT
+                </StyledButton>
+              ) : null}
+            </StyledCont>
+          </s.Container>
+        </s.Screen>
+      </div>
+      <Footer />
+    </div>
+  );
+}
+
+export default App;
+
+export const FetchProvider = async (contractAddress, contractAbi, signer) => {
+  console.log("contractAddress", contractAddress);
+  return new web3.eth.Contract(contractAbi, contractAddress);
+};
